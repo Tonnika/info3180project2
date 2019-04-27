@@ -1,0 +1,23 @@
+{%extends "base.html"%}
+{%block main%}
+    <form method="POST" action="{{url_for('register')}}" enctype="multipart/form-data">
+        {{form.csrf_token}}
+        {{form.username.label}}
+        {{form.username}}
+        {{form.password.label}}
+        {{form.password}}
+        {{form.first_name.label}}
+        {{form.first_name}}
+        {{form.last_name.label}}
+        {{form.last_name}}
+        {{form.email.label}}
+        {{form.email}}
+        {{form.loation.label}}
+        {{form.location}}
+        {{form.biography.label}}
+        {{form.biography}}
+        {{form.photo.label}}
+        <input type="file" name="photo"/>
+        <button type="submit">Register</button>
+    </form>
+{%endblock%}
