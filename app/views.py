@@ -124,7 +124,7 @@ def userPost(user_id):
     user=UserProfile.query.filter_by(user_id=user_id).first()
     post=Post.query.filter_by(user_id=user_id).all()
     follower_amt=len(Follow.query.filter_by(user_id=user_id).all())
-    respond={"status":ok, "post_data":{"first_name":user.first_name "lastname": user.last_name, "location":user.location, "joined_on":strf_time(user.joined_on "%B %Y"), "biography": user.biography, "postCount": len(post), "followers": follower_amt, "profile_image": os.path.join(app.config['UPLOAD_FOLDER'],user.profile_photo), "posts":[]}}
+    respond={"status":ok, "post_data":{"first_name":user.first_name, "lastname": user.last_name, "location":user.location, "joined_on":strf_time(user.joined_on "%B %Y"), "biography": user.biography, "postCount": len(post), "followers": follower_amt, "profile_image": os.path.join(app.config['UPLOAD_FOLDER'],user.profile_photo), "posts":[]}}
     
     for i in post:
         postObj={"id":post_id, "user_id":post.user_id, "photo":os.path.join(app.config['UPLOAD_FOLDER'],post.photo), "caption":post.caption,"created_on":post.created_on}
