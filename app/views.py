@@ -2,36 +2,39 @@ import os,DateTime,jwt
 from app import app,db,login_manager
 from flask import render_template, request,redirect, url_for, flash, jsonify
 from flask_login import login_user,logout_user,current_user,login_required
-from app.model import *
 from werkzeug.security import check_password_hash 
 from werkzeug.utils import secure_filename
 from forms import *
+from model import *
 import jwt
 from functools import wraps
 
 
-def token_required(w):
-    @wraps(w)
-    def wrapper(*args, **kwargs):
-        auth = request.headers.get('Authorization',None)
+def authenticate(token):
+    @wraps(token)
+    def decorated(*args, **kwargs):
         
-        if auth is None:
-            return jsonify({'message':'Token missing'})
-        if auth.split()[0].lower() != "x-token" :
-            return jsonify({'message':'Invalid token'})
-        try:
-            token = auth.split()[1]
-        except:
-            return jsonify({'message':'Invalid token'})
-        try:
-            data = jwt.decoode(token,app.config['SECRET_KEY'])
-        except jwt.DecodeError:
-            return jsonify({'message':'Token is invalid'})
-        except jwt.ExpiredSignature:
-            return jsonify({'message':'Token is invalid'})
-        g.current_user = data
-        return w(*args, **kwargs)
-    return wrapper
+        auth = request.headers.get('Authorization', None)
+        
+        if not auth:
+            return jsonify({'error': 'Access Denied'}), 401
+        else:
+            try:
+                userdata = jwt.decode(auth.split(" ")[1], app.config['SECRET_KEY'])
+                currentUser = Users.query.filter_by(username = userdata['user']).first()
+                
+                if currentUser is None:
+                    return jsonify({'error': 'Access Denied'}), 401
+                
+            except jwt.exceptions.InvalidSignatureError as e:
+                print e
+                return jsonify({'error':'Invalid Token'})
+            except jwt.exceptions.DecodeError as e:
+                print e
+                return jsonify({'error': 'Invalid Token'})
+            return t(*args, **kwargs)
+    return decorated
+    
 @app.route('/')
 def home():
     return render_template('home.html')
@@ -58,25 +61,21 @@ def register():
         filename=secure_filename(profile_photo.filename)
         profile_photo.save(app.config['UPLOAD_FOLDER']+filename)
         
-        profile=UserProfile(id=id,username=username,password=password,first_name=first_name,last_name=last_name,email=email,location=location,biography=biography,profile_photo=profile_photo,joined_on=joined_on)
-        db.session.add(profile)
+        user=UserProfile(username=username,password=password,first_name=first_name,last_name=last_name,email=email,location=location,biography=biography,profile_photo=profile_photo,joined_on=joined_on)
+        db.session.add(user)
         db.session.commit()
-        flash('Profile created successfully')
-        return redirect(url_for('home'))
-    return render_template('register.html')
-
+        return jsonify(message = 'Profile created')
 
 @app.route("/api/auth/login", methods=["POST"])
-@token_authenticate
 def login():
     form=LoginForm()
     if request.method == "POST" and form.validate_on_submit():
         username=form.username.data
         password=form.password.data
-        profile=UserProfile.query.filter_by(username=username,password=password).first()
+        user=UserProfile.query.filter_by(username=username,password=password).first()
         
-        if profile != None and check_password_hash(profile.password, password):
-            token= {'profile': profile.username}
+        if user != None and check_password_hash(user.password, password):
+            token= {'user': user.username}
             jwt_token = jwt.encode(token, app.config['SECRET_KEY'],algorithm="HS256")
             response = {'message': 'Login Successful'}
             
@@ -88,9 +87,21 @@ def login():
 @token_authenticate
 def logout():
     return jsonify(message="Logout successful")
+    
+@app.route("/api/posts", method=["GET"])
+@authenticate
+def allPost():    
+    Epost=Post.query.all()
+    postList=[]
+    for post in Epost:
+        user=UserProfile.query.filter_by(id=post.user_id).first()
+        likes_amt=len(Like.query.filter_by(post_id=post.id).all())
+        p={"id":post.id, "user_id":post.user_id, "username":user.username, "profile_photo": os.path.join(app.config['UPLOAD_FOLDER'],user.profile_photo),"photo":os.path.join(app.config['UPLOAD_FOLDER'],post.photo), "caption":post.caption,"created_on":strf_time(post.created_on, "%d %B %Y"),"likes":likes_amt}
+        postList.append(p)
+    return jsonify(postList=postList)
 
 @app.route("/api/users/<int:user_id>/posts", methods=['GET','POST'])
-@token_authenticate
+@authenticate
 def posts(user_id):
     if request.method == 'GET':
         user=UserProfile.query.filter_by(user_id=user_id).first()
@@ -113,23 +124,14 @@ def posts(user_id):
             user=UserProfile.query.filter_by(id=user_id).first()
             filename=user.username+secure_filename(photo.filename)
             created_on=str(datetime.date.today())
-            post=Post(user_id=user_id,photo=photo,caption=caption,joined_on=joined_on)
+            post=Post(user_id=user_id,photo=photo,caption=caption,created_on=created_on)
             photo.save(os.path.join("./app",app.config['POST_IMG_UPLOAD_FOLDER'],filename))
             db.session.add(post)
             db.session.commit()
             return jsonify(status=201, message="Post created successfully")
+        print form.errors.items()
+        return jsonify(status=200, errors=form_errors(form))
     
-@app.route("/api/users/<int:user_id>/posts", methods=["GET"])
-def userPost(user_id):
-    user=UserProfile.query.filter_by(user_id=user_id).first()
-    post=Post.query.filter_by(user_id=user_id).all()
-    follower_amt=len(Follow.query.filter_by(user_id=user_id).all())
-    respond={"status":ok, "post_data":{"first_name":user.first_name, "lastname": user.last_name, "location":user.location, "joined_on":strf_time(user.joined_on "%B %Y"), "biography": user.biography, "postCount": len(post), "followers": follower_amt, "profile_image": os.path.join(app.config['UPLOAD_FOLDER'],user.profile_photo), "posts":[]}}
-    
-    for i in post:
-        postObj={"id":post_id, "user_id":post.user_id, "photo":os.path.join(app.config['UPLOAD_FOLDER'],post.photo), "caption":post.caption,"created_on":post.created_on}
-        respond["post_data"]["post"].append(postObj)
-    return jsonify(respond)
         
 @app.route("/api/users/<int:user_id>/follow", method=["POST"])
 def follow(user_id):
@@ -142,17 +144,6 @@ def follow(user_id):
     db.session.commit()
     
     return jsonify(status = 201, message="Success")
-    
-@app.route("/api/posts", method=["GET"])
-def allPost:    
-    post=Post.query.filter_by(user_id=user_id).all()
-    postList=[]
-    for postList in post:
-        user=UserProfile.query.filter_by(id=post.user_id).first()
-        likes_amt=len(Like.query.filter_by(post_id=post.id).all())
-        p={"id":post.id, "user_id":post.user_id, "username":user.username, "profile_photo":os.path.join(app.config['UPLOAD_FOLDER'],user.profile_photo),"photo":os.path.join(app.config'[UPLOAD_FOLDER'],post.photo), "caption":post.caption,"created_on":strf_time(post.created_on, "%d %B %Y"),"likes":likes_amt }
-        postList.append(p)
-    return jsonify(postList=postList)
     
 
 @app.route("/api/posts/<int:post_id>/like", method=["POST"])     

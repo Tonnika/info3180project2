@@ -1,16 +1,16 @@
 from . import db
 
 class Post(db.Model):
-    __tablename__='Posts'
+    __tablename__='Post'
     
     id=db.Column(db.Integer,primary_key=True)
-    user_id=db.Column(db.Integer,primary_key=True)
+    user_id=db.Column(db.Integer)
     photo=db.Column(db.String(255))
     caption=db.Column(db.String(255))
     created_on=db.Column(db.DateTime)
     
     def __init__(self,id,user_id,photo,caption,created_on):
-        self.id=id
+        #self.id=id
         self.user_id=user_id
         self.photo=photo
         self.caption=caption
